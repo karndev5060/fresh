@@ -108,7 +108,12 @@ async def websocket_match_jobs(websocket: WebSocket):
 
         # 2. Thinking phase
         await websocket.send_json({"status": "thinking", "message": "Analyzing resume with Gemini AI..."})
-        await asyncio.sleep(2) # Visual pause
+        
+        # Generate Artifact (Achievements & Skills)
+        artifact_data = gemini_service.generate_student_artifact(resume_text)
+        await websocket.send_json({"status": "artifact", "data": artifact_data})
+        
+        await asyncio.sleep(1) # Visual pause
 
         # 3. Ranking phase
         jobs = db.query(models.Job).all()
@@ -125,7 +130,9 @@ async def websocket_match_jobs(websocket: WebSocket):
                 final_results.append({
                     **job_map[job_id],
                     "match_score": match.get("match_score", 0),
-                    "reasoning": match.get("reasoning", "No reasoning provided.")
+                    "reasoning": match.get("reasoning", "No reasoning provided."),
+                    "interview_questions": match.get("interview_questions", []),
+                    "missing_skills": match.get("missing_skills", [])
                 })
         
         await websocket.send_json({"status": "ranked", "jobs": final_results[:30]})
@@ -133,12 +140,41 @@ async def websocket_match_jobs(websocket: WebSocket):
 
         # 4. Auto-Apply phase for top 10
         top_10 = final_results[:10]
-        for job in top_10:
-            await websocket.send_json({"status": "applying", "job_id": job["id"], "job_title": job["title"]})
-            await asyncio.sleep(1.5) # Simulate application process
-            await websocket.send_json({"status": "applied", "job_id": job["id"]})
+        for i, job in enumerate(top_10):
+            # A. Phase: Tailoring (Simulated by Applicant Agent)
+            await websocket.send_json({"status": "tailoring", "job_id": job["id"], "job_title": job["title"]})
+            await asyncio.sleep(1)
+            
+            # Simple simulation: Tailored text is usually the original resume + some context.
+            # We'll intentionally inject a "Fabricated Skill" for the 3rd job to trigger the Auditor.
+            tailored_text = f"{resume_text}\n\n[Auto-Generated for {job['title']} at {job['company']}]"
+            if i == 2: # Trigger violation on the 3rd job
+                tailored_text += "\n\nExtra Experience: Expert in Quantum Blockchain AI and Neural Link Surgery."
+            
+            # B. Phase: Auditing (Simulated by The Auditor Agent)
+            await websocket.send_json({"status": "auditing", "job_id": job["id"]})
+            await asyncio.sleep(1.5)
+            
+            audit_result = gemini_service.audit_application(resume_text, tailored_text)
+            
+            if audit_result["safety_status"] == "FAIL":
+                # Create a log entry (In a real app, write to a DB table 'SafetyLogs')
+                log_entry = f"[SAFETY VIOLATION] Application to {job['title']} BLOCKED. Reason: {', '.join(audit_result['violations'])}. Explanation: {audit_result['explanation']}"
+                print(log_entry) # Terminal logging
+                
+                await websocket.send_json({
+                    "status": "violation", 
+                    "job_id": job["id"], 
+                    "reason": audit_result["explanation"],
+                    "details": audit_result["violations"]
+                })
+            else:
+                # C. Phase: Applying
+                await websocket.send_json({"status": "applying", "job_id": job["id"]})
+                await asyncio.sleep(1)
+                await websocket.send_json({"status": "applied", "job_id": job["id"]})
 
-        await websocket.send_json({"status": "complete", "message": "Successfully applied to top 10 matches!"})
+        await websocket.send_json({"status": "complete", "message": "Applications processed. Check status for violations."})
         
     except WebSocketDisconnect:
         print("WebSocket disconnected")
