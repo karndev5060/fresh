@@ -36,6 +36,8 @@ Thumbs.db
 
 # Environment
 .env
+backend/.env
+frontend/.env
 .venv/
 env.bak/
 venv.bak/

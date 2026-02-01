@@ -1,11 +1,12 @@
+from dotenv import load_dotenv
 import os
 import json
 import google.generativeai as genai
 import re
 from typing import List, Dict
 
-# In a real app, use environment variables
-GEMINI_API_KEY = "AIzaSyDay2FHKc9yIwR1clYnhQYOJmQYBSeUQEo"
+load_dotenv()
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 genai.configure(api_key=GEMINI_API_KEY)
 
 # Using gemini-1.5-flash as the default for better availability
